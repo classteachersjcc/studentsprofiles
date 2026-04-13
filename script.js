@@ -132,20 +132,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Cloud Sync Functions ---
     async function syncToDrive(studentName, dataType, content) {
     try {
-        const response = await fetch(DRIVE_SCRIPT_URL, {
+        // ഡ്രൈവിലേക്ക് അയക്കുന്നു
+        await fetch(DRIVE_SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors', // ശ്രദ്ധിക്കുക: no-cors ആണെങ്കിൽ റെസ്പോൺസ് റീഡ് ചെയ്യാൻ കഴിയില്ല
             body: JSON.stringify({ studentName, dataType, content })
         });
         
-        // വിജയകരമായി അയച്ചു എന്ന് കാണിക്കാൻ ഒരു ചെറിയ നോട്ടിഫിക്കേഷൻ
-        console.log(`Backup successful for ${studentName}`);
-        
-        // ഒരു വിഷ്വൽ ഇൻഡിക്കേറ്റർ നൽകാം (ഓപ്ഷണൽ)
         const statusElem = document.getElementById('syncStatus');
         if(statusElem) {
             statusElem.innerHTML = "✅ Cloud Synced";
-            statusElem.classList.replace('text-danger', 'text-success');
+            statusElem.className = "text-success small fw-bold";
         }
     } catch (error) {
         console.error("Backup failed:", error);
@@ -156,16 +152,27 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
         const response = await fetch(`${DRIVE_SCRIPT_URL}?studentName=${encodeURIComponent(studentName)}`, {
             method: 'GET',
-            redirect: 'follow', // ഇത് വളരെ പ്രധാനമാണ്
+            redirect: 'follow',
         });
         
         if (!response.ok) throw new Error('Network response was not ok');
         
         const data = await response.json();
-        // ഡാറ്റ ലോക്കൽ സ്റ്റോറേജിലേക്ക് സേവ് ചെയ്യുക
-        // ...
+        
+        // ഡ്രൈവിൽ നിന്ന് ലഭിച്ച ഡാറ്റ ലോക്കൽ സ്റ്റോറേജിലേക്ക് മാറ്റുന്നു
+        if (data && typeof data === 'object') {
+            Object.keys(data).forEach(key => {
+                // key എന്നത് 'warning_links' അല്ലെങ്കിൽ 'MG1DSCMLM100' എന്നൊക്കെ ആയിരിക്കും
+                // അത് 'StudentName_key' എന്ന രീതിയിൽ ലോക്കൽ സ്റ്റോറേജിൽ സേവ് ചെയ്യുന്നു
+                localStorage.setItem(`${studentName}_${key}`, JSON.stringify(data[key]));
+            });
+            
+            // ഡാറ്റ ലോഡ് ചെയ്ത ശേഷം UI ഒന്നുകൂടി പുതുക്കുന്നു
+            loadStudentData(studentName);
+            console.log("Cloud data synced to Local Storage");
+        }
     } catch (error) {
-        console.error("Drive Load Error", error);
+        console.error("Drive Load Error:", error);
     }
 }
 
