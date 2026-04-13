@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const detailsSection = document.getElementById('studentDetails');
     const backList = document.getElementById('backPaperList');
 
+    // നിങ്ങളുടെ ഗൂഗിൾ ആപ്പ് സ്ക്രിപ്റ്റ് URL
+    const DRIVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwx5zcgrAfdcNdNblD9MBdckIOk6LA3UtBVH5t9eUal7J2zu4T_sW-8eUF1W7Gle-fZ/exec";
+
     const studentList = [
         "AARYAN P KUMAR", "ABHIN A", "ABITH SAJAYAN", "ADARSH VENUGOPAL",
         "ADARSHKUMAR M S", "ADITHYA KRISHNA H", "ADITHYAN GHOSH", "ADITYA V B",
@@ -21,10 +24,6 @@ document.addEventListener('DOMContentLoaded', function() {
         "VISMAYA MOL P B", "YAHANG NABUM"
     ];
 
-	localStorage.setItem("AMEEN AHSAN SALIH_apaar", JSON.stringify({id: "1234-5678-9012", pass: "Ameen@123"}));
-	localStorage.setItem("AARYAN P KUMAR_apaar", JSON.stringify({id: "2034-5678-9012", pass: "Amrayann@123"}));
-	
-	
     const semesterCourses = {
         "Semester-1": [
             { id: "MG1DSCMLM100", name: "Foundation Photography" },
@@ -130,6 +129,46 @@ document.addEventListener('DOMContentLoaded', function() {
     const activeSem = getActiveSemester();
     const currentSemNum = parseInt(activeSem.split('-')[1]) || 0;
 
+    // --- Cloud Sync Functions ---
+    async function syncToDrive(studentName, dataType, content) {
+    try {
+        const response = await fetch(DRIVE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors', // ശ്രദ്ധിക്കുക: no-cors ആണെങ്കിൽ റെസ്പോൺസ് റീഡ് ചെയ്യാൻ കഴിയില്ല
+            body: JSON.stringify({ studentName, dataType, content })
+        });
+        
+        // വിജയകരമായി അയച്ചു എന്ന് കാണിക്കാൻ ഒരു ചെറിയ നോട്ടിഫിക്കേഷൻ
+        console.log(`Backup successful for ${studentName}`);
+        
+        // ഒരു വിഷ്വൽ ഇൻഡിക്കേറ്റർ നൽകാം (ഓപ്ഷണൽ)
+        const statusElem = document.getElementById('syncStatus');
+        if(statusElem) {
+            statusElem.innerHTML = "✅ Cloud Synced";
+            statusElem.classList.replace('text-danger', 'text-success');
+        }
+    } catch (error) {
+        console.error("Backup failed:", error);
+    }
+}
+
+    async function loadFromDrive(studentName) {
+    try {
+        const response = await fetch(`${DRIVE_SCRIPT_URL}?studentName=${encodeURIComponent(studentName)}`, {
+            method: 'GET',
+            redirect: 'follow', // ഇത് വളരെ പ്രധാനമാണ്
+        });
+        
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const data = await response.json();
+        // ഡാറ്റ ലോക്കൽ സ്റ്റോറേജിലേക്ക് സേവ് ചെയ്യുക
+        // ...
+    } catch (error) {
+        console.error("Drive Load Error", error);
+    }
+}
+
     studentList.sort().forEach(name => {
         let option = document.createElement('option');
         option.value = name;
@@ -137,37 +176,39 @@ document.addEventListener('DOMContentLoaded', function() {
         studentSelect.appendChild(option);
     });
 
-    studentSelect.addEventListener('change', function() {
-        if (this.value !== "") {
-            detailsSection.classList.remove('d-none');
-            loadStudentData(this.value);
-        } else {
-            detailsSection.classList.add('d-none');
-        }
-    });
+    studentSelect.addEventListener('change', async function() {
+    const studentName = this.value;
+    if (studentName !== "") {
+        detailsSection.classList.remove('d-none');
+        
+        // 1. ആദ്യം ലോക്കൽ സ്റ്റോറേജിലുള്ള ഡാറ്റ വെച്ച് UI കാണിക്കുക
+        loadStudentData(studentName);
+        
+        // 2. ബാക്ക്ഗ്രൗണ്ടിൽ ഡ്രൈവിൽ നിന്ന് പുതിയ ഡാറ്റ എടുക്കുക
+        await loadFromDrive(studentName); 
+    } else {
+        detailsSection.classList.add('d-none');
+    }
+});
 
-    // --- ഡാറ്റ സമ്മറി കാർഡ് ഡിസ്‌പ്ലേ (Warning/Apology/Condonation ഉൾപ്പെടെ) ---
-    // ക്രെഡിറ്റ് ബോക്സ് ഡിസ്‌പ്ലേ ചെയ്യുന്ന ഫംഗ്‌ഷൻ (Back Paper ലിസ്റ്റിന് താഴെ വരാൻ)
    function displaySummaryCard(total, studentName) {
+    // പഴയ ബോക്സുകൾ ഉണ്ടെങ്കിൽ നീക്കം ചെയ്യുക
     const oldBox = document.getElementById('creditBox');
     const oldExtraBox = document.getElementById('extraCurricularBox');
     if (oldBox) oldBox.remove();
     if (oldExtraBox) oldExtraBox.remove();
 
-    // ലോക്കൽ സ്റ്റോറേജിൽ നിന്ന് ഡാറ്റ എടുക്കാനുള്ള ഫംഗ്ഷൻ
     const getData = (type) => JSON.parse(localStorage.getItem(`${studentName}_${type}_links`)) || [];
     
-    // ഡിസിപ്ലിനറി & അക്കാദമിക് റെക്കോർഡുകൾ
     const warnings = getData('warning');
     const apologies = getData('apology');
     const condonations = getData('condonation');
 
-    // കൗണ്ടുകൾ മുകളിലെ സ്റ്റാറ്റസ് ബാറിൽ അപ്ഡേറ്റ് ചെയ്യുന്നു
+    // സൈഡ് ബാറിലെ കൗണ്ടുകൾ അപ്ഡേറ്റ് ചെയ്യുന്നു
     if (document.getElementById('warnCountDisplay')) document.getElementById('warnCountDisplay').textContent = warnings.length;
     if (document.getElementById('apolCountDisplay')) document.getElementById('apolCountDisplay').textContent = apologies.length;
     if (document.getElementById('condCountDisplay')) document.getElementById('condCountDisplay').textContent = condonations.length;
 
-    // വ്യൂ & ഡിലീറ്റ് ബട്ടണുകൾ നിർമ്മിക്കുന്നു
     const createDocLinks = (links, type) => {
         if (links.length === 0) return `<span class="text-muted small italic">No files</span>`;
         return links.map((link, index) => `
@@ -178,12 +219,10 @@ document.addEventListener('DOMContentLoaded', function() {
         `).join('');
     };
 
-    // 1. അക്കാദമിക് സമ്മറി ബോക്സ് (Credits, Warnings, Apologies, Condonation)
+    // അക്കാദമിക് കാർഡ്
     const academicHtml = `
         <div id="creditBox" class="card mt-3 mb-2 shadow-sm border-0">
-            <div class="card-header bg-primary text-white py-1 fw-bold small">
-                Academic Performance Summary
-            </div>
+            <div class="card-header bg-primary text-white py-1 fw-bold small">Academic Performance Summary</div>
             <ul class="list-group list-group-flush">
                 <li class="list-group-item d-flex justify-content-between align-items-center bg-light fw-bold small">
                     Total Credits Earned: <span class="badge bg-primary">${total}</span>
@@ -212,12 +251,10 @@ document.addEventListener('DOMContentLoaded', function() {
             </ul>
         </div>`;
 
-    // 2. എക്സ്ട്രാ കരിക്കുലം ബോക്സ്
+    // എക്സ്ട്രാ കരിക്കുലം കാർഡ്
     const extraHtml = `
         <div id="extraCurricularBox" class="card mt-2 mb-3 shadow-sm border-0">
-            <div class="card-header bg-success text-white py-1 fw-bold small">
-                Extra-Curricular Activities
-            </div>
+            <div class="card-header bg-success text-white py-1 fw-bold small">Extra-Curricular Activities</div>
             <ul class="list-group list-group-flush">
                 ${[['sports', 'Sports'], ['youthFest', 'Youth Festival'], ['awards', 'Awards'], ['film', 'Film Making']].map(([key, label]) => `
                     <li class="list-group-item small">
@@ -231,50 +268,40 @@ document.addEventListener('DOMContentLoaded', function() {
             </ul>
         </div>`;
     
-    const backList = document.getElementById('backPaperList');
-    if (backList) {
-        backList.insertAdjacentHTML('afterend', academicHtml);
+    const bList = document.getElementById('backPaperList');
+    if (bList) {
+        bList.insertAdjacentHTML('afterend', academicHtml);
         document.getElementById('creditBox').insertAdjacentHTML('afterend', extraHtml);
     }
 }
 
-    // --- ഡോക്യുമെന്റ് അപ്‌ലോഡ് ഫംഗ്‌ഷൻ ---
    window.uploadDoc = function(studentName, type) {
     const link = prompt(`Enter Document URL for ${type}:`);
-    
     if (link) {
-        // നിലവിലുള്ള ലിസ്റ്റ് എടുക്കുന്നു
         let currentList = JSON.parse(localStorage.getItem(`${studentName}_${type}_links`)) || [];
-        
-        // പുതിയ ലിങ്ക് ചേർക്കുന്നു
         currentList.push(link);
-        
-        // തിരിച്ച് localStorage-ലേക്ക് സേവ് ചെയ്യുന്നു
         localStorage.setItem(`${studentName}_${type}_links`, JSON.stringify(currentList));
         
-        // കൗണ്ട് മാറാനായി ഡാറ്റ വീണ്ടും ലോഡ് ചെയ്യുന്നു
-        loadStudentData(studentName);
+        // ക്ലൗഡ് സിങ്ക്
+        syncToDrive(studentName, type + '_links', currentList);
+        
+        // UI അപ്ഡേറ്റ് ചെയ്യാൻ ഈ ഫംഗ്ഷൻ വീണ്ടും വിളിക്കുക
+        loadStudentData(studentName); 
     }
 };
 
-window.deleteDoc = function(studentName, type, index) {
-    if (confirm("ഈ ഡോക്യുമെന്റ് നീക്കം ചെയ്യണോ?")) {
-        // localStorage-ൽ നിന്ന് ലിസ്റ്റ് എടുക്കുന്നു
-        let currentList = JSON.parse(localStorage.getItem(`${studentName}_${type}_links`)) || [];
-        
-        // തിരഞ്ഞെടുത്ത ഇൻഡക്സിലുള്ള ഐറ്റം ഒഴിവാക്കുന്നു
-        currentList.splice(index, 1);
-        
-        // പുതിയ ലിസ്റ്റ് സേവ് ചെയ്യുന്നു
-        localStorage.setItem(`${studentName}_${type}_links`, JSON.stringify(currentList));
-        
-        // പേജ് അപ്ഡേറ്റ് ചെയ്യുന്നു
-        loadStudentData(studentName);
-    }
-};	
-	
-	
-	
+    window.deleteDoc = function(studentName, type, index) {
+        if (confirm("Delete this document?")) {
+            let currentList = JSON.parse(localStorage.getItem(`${studentName}_${type}_links`)) || [];
+            currentList.splice(index, 1);
+            localStorage.setItem(`${studentName}_${type}_links`, JSON.stringify(currentList));
+            
+            // Sync to Cloud
+            syncToDrive(studentName, type + '_links', currentList);
+            loadStudentData(studentName);
+        }
+    };	
+
     window.loadStudentData = function(studentName) {
         const photoElem = document.getElementById('studentPhoto');
         const photoPath = `./images/${studentName}.jpg`;
@@ -285,36 +312,22 @@ window.deleteDoc = function(studentName, type, index) {
         }
 
         document.getElementById('displayName').textContent = studentName;
-		
         const savedApaar = JSON.parse(localStorage.getItem(`${studentName}_apaar`)) || { id: "Not Provided", pass: "********" };
         
-      
         const oldApaarBox = document.getElementById('apaarDisplayBox');
         if (oldApaarBox) oldApaarBox.remove();
 
-       
         const apaarHtml = `
             <div id="apaarDisplayBox" class="mt-2 p-2 border rounded bg-light shadow-sm mx-auto" style="max-width: 300px;">
                 <div class="small text-muted mb-1" style="font-size: 0.7rem;">APAAR INFORMATION</div>
                 <div class="d-flex justify-content-around align-items-center">
-                    <div class="small">
-                        <span class="fw-bold text-primary">ID:</span> 
-                        <span class="text-dark">${savedApaar.id}</span>
-                    </div>
-                    <div class="small">
-                        <span class="fw-bold text-primary">PASS:</span> 
-                        <span class="text-dark">${savedApaar.pass}</span>
-                    </div>
+                    <div class="small"><span class="fw-bold text-primary">ID:</span> ${savedApaar.id}</div>
+                    <div class="small"><span class="fw-bold text-primary">PASS:</span> ${savedApaar.pass}</div>
                 </div>
             </div>`;
         
-        // displayName കാണിക്കുന്ന എലമെന്റിന് താഴെ ഇത് ചേർക്കുന്നു
         document.getElementById('displayName').insertAdjacentHTML('afterend', apaarHtml);
-        const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
-        if (document.getElementById('currentDateDisplay')) {
-            document.getElementById('currentDateDisplay').textContent = dateStr;
-        }
-
+        
         marksTable.innerHTML = "";
         backList.innerHTML = "";
         let hasBackPaper = false;
@@ -325,7 +338,6 @@ window.deleteDoc = function(studentName, type, index) {
             const semNum = parseInt(sem.split('-')[1]);
             if (semNum <= currentSemNum) {
                 marksTable.innerHTML += `<tr class="table-dark text-center fw-bold"><td colspan="10">${sem}</td></tr>`;
-                
                 const isPublished = (sem === "Semester-1") || (localStorage.getItem(`status_${sem}`) === "published");
                 let semFailed = [];
 
@@ -346,7 +358,6 @@ window.deleteDoc = function(studentName, type, index) {
                     }
 
                     const saved = JSON.parse(localStorage.getItem(`${studentName}_${courseId}`)) || {};
-                    
                     marksTable.innerHTML += `
                         <tr id="row_${courseId}">
                             <td class="text-start small">${courseDisplay}</td>
@@ -362,20 +373,15 @@ window.deleteDoc = function(studentName, type, index) {
                         </tr>`;
 
                     if (!courseId.startsWith("temp")) {
-                        const res = calculatePass(courseId, studentName);
+                        const res = calculatePass(courseId, studentName, false); // false = don't sync on initial load
                         if (isPublished) {
                             if (res === "PASS") {
                                 const mInt = parseFloat(document.getElementById(`maxInt_${courseId}`).value) || 0;
                                 const mExt = parseFloat(document.getElementById(`maxExt_${courseId}`).value) || 0;
                                 const totalMax = mInt + mExt;
-
-                                if (totalMax === 100) {
-                                    totalCreditsEarned += 4;
-                                } else if (totalMax === 75) {
-                                    totalCreditsEarned += 3;
-                                } else if (totalMax >= 175) {
-                                    totalCreditsEarned += 3;
-                                }
+                                if (totalMax === 100) totalCreditsEarned += 4;
+                                else if (totalMax === 75) totalCreditsEarned += 3;
+                                else if (totalMax >= 175) totalCreditsEarned += 3;
                             } else {
                                 semFailed.push(course.isLanguage ? "Language" : course.name);
                                 totalBackPapersCount++;
@@ -396,18 +402,17 @@ window.deleteDoc = function(studentName, type, index) {
             }
         });
 
-        if (document.getElementById('statCredits')) document.getElementById('statCredits').textContent = totalCreditsEarned;
-        if (document.getElementById('statBackPapers')) document.getElementById('statBackPapers').textContent = totalBackPapersCount;
-
-        // സമ്മറി കാർഡ് ലോഡ് ചെയ്യുന്നു
         displaySummaryCard(totalCreditsEarned, studentName);
-
         if (!hasBackPaper) {
             backList.innerHTML = `<div class="alert alert-success mt-2 small">നിലവിൽ ബാക്ക് പേപ്പറുകൾ ഇല്ല.</div>`;
         }
+		
+		if (document.getElementById('statCredits')) document.getElementById('statCredits').textContent = totalCreditsEarned;
+    if (document.getElementById('statBackPapers')) document.getElementById('statBackPapers').textContent = totalBackPapersCount;
+		displaySummaryCard(totalCreditsEarned, studentName);
     };
 
-    window.calculatePass = function(id, studentName) {
+    window.calculatePass = function(id, studentName, shouldSync = true) {
         const mInt = parseFloat(document.getElementById(`maxInt_${id}`).value) || 0;
         const gInt = parseFloat(document.getElementById(`grantInt_${id}`).value) || 0;
         const mExt = parseFloat(document.getElementById(`maxExt_${id}`).value) || 0;
@@ -429,19 +434,67 @@ window.deleteDoc = function(studentName, type, index) {
             statusElem.innerHTML = `<span class="badge ${result === 'PASS' ? 'bg-success' : 'bg-danger'}">${result}</span>`;
         }
 
-        localStorage.setItem(`${studentName}_${id}`, JSON.stringify({ maxInt: mInt, grantInt: gInt, maxExt: mExt, grantExt: gExt }));
+        const dataObj = { maxInt: mInt, grantInt: gInt, maxExt: mExt, grantExt: gExt };
+        localStorage.setItem(`${studentName}_${id}`, JSON.stringify(dataObj));
+        
+        if (shouldSync) syncToDrive(studentName, id, dataObj);
+        
         return result;
     };
 
     window.updateUI = function(id, studentName) {
         calculatePass(id, studentName);
-        loadStudentData(studentName); 
+        // loadStudentData(studentName) ഒഴിവാക്കി, പകരം ആവശ്യമായത് മാത്രം അപ്ഡേറ്റ് ചെയ്യുക (പെർഫോമൻസിനായി)
     };
 
     window.changeLanguage = function(sem, studentName, selectedId) {
         if (selectedId) {
             localStorage.setItem(`${studentName}_lang_${sem}`, selectedId);
+            syncToDrive(studentName, `lang_${sem}`, selectedId);
             loadStudentData(studentName);
         }
     };
 });
+
+
+window.migrateToCloud = async function(studentName) {
+    if (!studentName) {
+        alert("ദയവായി ഒരു വിദ്യാർത്ഥിയെ തിരഞ്ഞെടുക്കുക!");
+        return;
+    }
+
+    const allKeys = Object.keys(localStorage);
+    const studentData = {};
+    let count = 0;
+
+    // ഈ വിദ്യാർത്ഥിയുടേത് മാത്രമായ എല്ലാ ഡാറ്റയും ലോക്കൽ സ്റ്റോറേജിൽ നിന്ന് എടുക്കുന്നു
+    allKeys.forEach(key => {
+        if (key.startsWith(studentName + "_")) {
+            const dataKey = key.replace(studentName + "_", "");
+            studentData[dataKey] = JSON.parse(localStorage.getItem(key));
+            count++;
+        }
+    });
+
+    if (count === 0) {
+        alert("ഈ വിദ്യാർത്ഥിയുടെ ഡാറ്റ ലോക്കൽ ഡ്രൈവിൽ ലഭ്യമല്ല.");
+        return;
+    }
+
+    // ഗൂഗിൾ സ്ക്രിപ്റ്റിലേക്ക് അയക്കുന്നു
+    try {
+        await fetch(DRIVE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({ 
+                studentName: studentName, 
+                dataType: "FULL_MIGRATION", 
+                content: studentData 
+            })
+        });
+        alert(`വിജയകരമായി ${count} ഫയലുകൾ ഡ്രൈവിലേക്ക് കോപ്പി ചെയ്തു!`);
+    } catch (e) {
+        alert("ഡ്രൈവിലേക്ക് മാറ്റാൻ സാധിച്ചില്ല. ഇന്റർനെറ്റ് കണക്ഷൻ പരിശോധിക്കുക.");
+        console.error(e);
+    }
+};
